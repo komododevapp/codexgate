@@ -129,32 +129,16 @@
       const commands = makeCommands(archive, checksum, version, build, platform);
       const installers = release.assets.filter((asset) => asset && asset.name === 'install.sh');
       const installer = installers.length === 1 && safeAsset(installers[0], 'install.sh');
+      const shellCommand = "curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://github.com/komododevapp/codexgate/releases/latest/download/install.sh | sh";
       if (shellPanel && shellCode) {
         shellPanel.hidden = !installer;
-        shellCode.textContent = installer ? [
-          "curl --fail --location --proto '=https' --proto-redir '=https' https://github.com/komododevapp/codexgate/releases/latest/download/install.sh -o install-codexgate.sh &&",
-          'sh install-codexgate.sh',
-        ].join('\n') : '';
+        shellCode.textContent = installer ? shellCommand : '';
       }
       installCode.textContent = commands;
-      updateCode.textContent = [
-        'set -euo pipefail',
-        'export PATH="$HOME/.local/bin:$PATH"',
-        'cd "$HOME/codexgate-gateway"',
-        'codexgate admin service stop',
-        'codexgate service stop',
-        commands,
-        'codexgate migrate',
-        'codexgate service install --project-dir "$HOME/codexgate-gateway"',
-        'codexgate admin service install --project-dir "$HOME/codexgate-gateway"',
-        'codexgate service start',
-        'codexgate admin service start',
-        'codexgate service status',
-        'codexgate admin service status',
-      ].join('\n');
+      updateCode.textContent = installer ? shellCommand : '';
       installPanel.hidden = false;
-      updatePanel.hidden = false;
-      unavailable.hidden = true;
+      updatePanel.hidden = !installer;
+      unavailable.hidden = Boolean(!installer);
       releaseStatus.textContent = `Available: CodexGate ${version} · build ${build}. Review the commands before running them.`;
     };
     target.addEventListener('change', renderRelease);
