@@ -1,0 +1,48 @@
+name: Publish verified native binaries
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Public tag: vVERSION-buildBUILD'
+        required: true
+        type: string
+      version:
+        description: 'Application MAJOR.MINOR.PATCH'
+        required: true
+        type: string
+      build:
+        description: 'Application build number'
+        required: true
+        type: string
+      source_run_id:
+        description: 'Successful private native build run ID'
+        required: true
+        type: string
+      artifacts_json:
+        description: 'Four native artifact metadata entries with short-lived GitHub signed URLs'
+        required: true
+        type: string
+      release_notes:
+        description: 'Public release notes (Markdown)'
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: publish-native-${{ inputs.release_tag }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out public distribution files
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Validate artifacts and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: python3 scripts/publish_release.py
