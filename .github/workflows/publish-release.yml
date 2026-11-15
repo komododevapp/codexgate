@@ -44,5 +44,4 @@ jobs:
       - name: Validate artifacts and publish
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_NOTES: ${{ inputs.release_notes }}
         run: python3 scripts/publish_release.py

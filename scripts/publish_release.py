@@ -227,7 +227,7 @@ class GitHub:
     def release(self, tag):
         raw = self.command(['api', f'repos/{self.repo}/releases/tags/{quote(tag, safe="")}'], allow_404=True)
         if raw is None:
-            return None
+            return self._draft_release(tag)
         try:
             result = json.loads(raw)
         except ValueError:
@@ -235,6 +235,35 @@ class GitHub:
         if not isinstance(result, dict):
             raise PublishError('GitHub release response is invalid')
         return result
+
+    def _draft_release(self, tag):
+        # Drafts without a created Git tag are absent from the tag endpoint.
+        # Authenticated release listings still expose them. Scan every page so
+        # an ambiguous duplicate never results in a second draft or upload.
+        found = None
+        for page in range(1, 101):
+            raw = self.command(['api', f'repos/{self.repo}/releases?per_page=100&page={page}'])
+            try:
+                rows = json.loads(raw)
+            except (TypeError, ValueError):
+                raise PublishError('GitHub release listing is invalid') from None
+            if not isinstance(rows, list) or len(rows) > 100:
+                raise PublishError('GitHub release listing is invalid')
+            for row in rows:
+                if (not isinstance(row, dict) or not isinstance(row.get('tag_name'), str)
+                        or not isinstance(row.get('draft'), bool)):
+                    raise PublishError('GitHub release listing is invalid')
+                if row['tag_name'] != tag:
+                    continue
+                if (row['draft'] is not True or type(row.get('id')) is not int or row['id'] <= 0
+                        or not isinstance(row.get('assets'), list)):
+                    raise PublishError('Matching draft release metadata is invalid')
+                if found is not None:
+                    raise PublishError('Multiple releases match the intended tag; nothing modified')
+                found = row
+            if len(rows) < 100:
+                return found
+        raise PublishError('GitHub release listing exceeds its pagination bound')
 
     def create(self, inputs, notes):
         self.command(['release', 'create', inputs['tag'], '--repo', self.repo, '--draft', '--target', 'main',
@@ -317,7 +346,6 @@ def main():
                     print('::add-mask::' + value, flush=True)
         except (TypeError, ValueError):
             pass
-        values['release_notes'] = os.environ.get('RELEASE_NOTES', values.get('release_notes', ''))
         inputs = parse_inputs(values)
         github = GitHub(os.environ.get('GITHUB_REPOSITORY', ''))
         with tempfile.TemporaryDirectory(prefix='codexgate-publisher-') as temporary:
