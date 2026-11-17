@@ -17,7 +17,7 @@ from urllib.parse import quote, urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, build_opener
 
 REPOSITORY = 'komododevapp/codexgate'
-MATRIX = {('linux', 'x86_64'), ('linux', 'aarch64'), ('macos', 'x86_64'), ('macos', 'aarch64')}
+MATRIX = {('linux', 'x86_64'), ('macos', 'aarch64')}
 MAX_ARTIFACT = 512 * 1024 * 1024
 MAX_INSTALLER = 256 * 1024
 MAX_SUMS = 64 * 1024
@@ -77,8 +77,8 @@ def parse_inputs(values):
         artifacts = json.loads(values.get('artifacts_json', ''))
     except (TypeError, ValueError):
         raise PublishError('Artifact metadata must be a JSON list') from None
-    if not isinstance(artifacts, list) or len(artifacts) != 4:
-        raise PublishError('Exactly four native artifact entries are required')
+    if not isinstance(artifacts, list) or len(artifacts) != len(MATRIX):
+        raise PublishError('Exactly two native artifact entries are required')
     seen, ids = set(), set()
     for item in artifacts:
         if not isinstance(item, dict) or set(item) != {'platform', 'arch', 'artifact_id', 'url', 'digest'}:
@@ -202,8 +202,8 @@ def prepare(inputs, root, downloader=download):
             raise PublishError('GitHub artifact ZIP is invalid or corrupt') from None
     (assets / 'SHA256SUMS').write_text(''.join(f'{digest}  {name}\n' for name, digest in sorted(merged.items())), encoding='utf-8')
     files = {path.name: {'path': path, 'size': path.stat().st_size, 'digest': sha256(path)} for path in assets.iterdir()}
-    if len(files) != 6:
-        raise PublishError('Publisher did not assemble exactly six release assets')
+    if len(files) != len(MATRIX) + 2:
+        raise PublishError('Publisher did not assemble exactly four release assets')
     return files
 
 
@@ -324,7 +324,7 @@ def publish(inputs, files, root, github):
                 raise PublishError('Asset upload is not confirmed; inspect release state before retrying')
     release = github.release(inputs['tag'])
     if release is None or set(inventory(release, files, inputs)) != set(files):
-        raise PublishError('All six assets must be verified before publication')
+        raise PublishError('All release assets must be verified before publication')
     github.publish(inputs['tag'])
     final = github.release(inputs['tag'])
     if final is None or final.get('draft') is not False or set(inventory(final, files, inputs)) != set(files):
